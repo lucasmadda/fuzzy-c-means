@@ -1,4 +1,3 @@
-# app.py
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -34,10 +33,11 @@ def plot_ground_truth(X2, y, names):
 
 def plot_solution_scatter(X2, labels, centers2=None, title=""):
     fig, ax = plt.subplots(figsize=(4.6, 4.4))
-    colors = _palette(len(np.unique(labels)))
-    for c in np.unique(labels):
+    uniq = np.unique(labels)
+    colors = _palette(len(uniq))
+    for c in uniq:
         pts = X2[labels == c]
-        ax.scatter(pts[:, 0], pts[:, 1], s=18, alpha=0.9, c=[colors[c]])
+        ax.scatter(pts[:, 0], pts[:, 1], s=18, alpha=0.9, c=[colors[int(c) % len(colors)]])
     if centers2 is not None:
         ax.scatter(centers2[:,0], centers2[:,1], s=120, marker="X",
                    edgecolor="k", linewidths=0.8)
@@ -65,19 +65,21 @@ def plot_silhouette(Xn, labels, title_prefix="Silhouette", bg=None):
                              alpha=0.12, color=cm.Greys(0.5))
             y_lower = y_upper + 10
 
-    colors = _palette(len(np.unique(labels)))
+    uniq = np.unique(labels)
+    colors = _palette(len(uniq))
     y_lower = 10
     means_by_cluster = {}
-    for c in np.unique(labels):
+    for c in uniq:
         vals_c = np.sort(sil_vals[labels == c])
         size_c = len(vals_c)
         if size_c == 0:
             continue
         y_upper = y_lower + size_c
         ax.fill_betweenx(np.arange(y_lower, y_upper), 0, vals_c,
-                         facecolor=colors[c], edgecolor=colors[c], alpha=0.9)
-        means_by_cluster[c] = vals_c.mean()
-        ax.text(0.02, (y_lower + y_upper)/2, f"c={c}", va="center", fontsize=9)
+                         facecolor=colors[int(c) % len(colors)],
+                         edgecolor=colors[int(c) % len(colors)], alpha=0.9)
+        means_by_cluster[int(c)] = vals_c.mean()
+        ax.text(0.02, (y_lower + y_upper)/2, f"c={int(c)}", va="center", fontsize=9)
         y_lower = y_upper + 10
 
     ax.axvline(sil_avg, linestyle="--", linewidth=1.3, color=cm.Purples(0.8))
@@ -146,88 +148,128 @@ sil_hard_vals = silhouette_samples(Xn, labels_fcm_argmax)
 bg_ref = (sil_hard_vals, labels_fcm_argmax)
 
 # =========================
-# UI
+# Sidebar (sempre visível)
 # =========================
-st.title("Iris • K-means vs Fuzzy C-means")
-st.caption("Normalização: MinMax • PCA 2D para visualização • k=c=3")
-
 with st.sidebar:
     st.header("Parâmetros")
     thr = st.slider("FCM: threshold de pertinência dominante", 0.0, 1.0, 0.0, 0.01)
-    st.write("Pontos com max(pertinência) < threshold são ignorados nos gráficos filtrados.")
+    st.caption("Pontos com max(pertinência) < threshold são ignorados nos gráficos/tabelas filtrados.")
+
+st.title("Iris • K-means vs Fuzzy C-means")
+st.caption("Normalização: MinMax • PCA 2D para visualização • k=c=3")
 
 # =========================
-# Linha 1 — K-means: GT, scatter, silhouette
+# Tabs principais
 # =========================
-st.subheader("K-means (k=3)")
-col1, col2, col3 = st.columns(3)
-with col1: st.pyplot(plot_ground_truth(X2, y, names), clear_figure=True)
-with col2: st.pyplot(plot_solution_scatter(X2, labels_km, centers2_km, "k-means (k=3)"), clear_figure=True)
-with col3: st.pyplot(plot_silhouette(Xn, labels_km, "Silhouette (k-means)"), clear_figure=True)
+tab_graficos, tab_tabelas = st.tabs(["Gráficos", "Análise Descritiva por Cluster"])
 
-# =========================
-# Linha 2 — FCM: scatter filtrado + silhouette com sombra de threshold=0
-# =========================
-st.subheader("Fuzzy C-means (c=3) com filtro por threshold")
-# Filtragem
-keep = (u.max(axis=0) >= thr)
-labels_thr = labels_fcm_argmax[keep] if keep.sum() > 0 else labels_fcm_argmax
-Xn_thr = Xn[keep] if keep.sum() > 0 else Xn
+# -------------------------
+# TAB 1 — GRÁFICOS
+# -------------------------
+with tab_graficos:
+    # Linha 1 — K-means: GT, scatter, silhouette
+    st.subheader("K-means (k=3)")
+    c1, c2, c3 = st.columns([1,1,1], vertical_alignment="top")
+    with c1:
+        st.pyplot(plot_ground_truth(X2, y, names), clear_figure=True)
+    with c2:
+        st.pyplot(plot_solution_scatter(X2, labels_km, centers2_km, "k-means (k=3)"), clear_figure=True)
+    with c3:
+        st.pyplot(plot_silhouette(Xn, labels_km, "Silhouette (k-means)"), clear_figure=True)
 
-col4, col5 = st.columns(2)
-with col4:
-    fig = plt.figure(figsize=(5.2, 4.6))
-    ax = plt.gca()
-    colors = _palette(3)
-    # cinza para os ignorados
-    ax.scatter(X2[~keep,0], X2[~keep,1], s=12, alpha=0.25, c=[cm.Greys(0.6)])
-    # mantidos por cluster
-    for c in np.unique(labels_fcm_argmax):
-        m = keep & (labels_fcm_argmax == c)
-        ax.scatter(X2[m,0], X2[m,1], s=18, alpha=0.95, c=[colors[c]], label=f"c={c}")
-    ax.scatter(centers2_fcm[:,0], centers2_fcm[:,1], s=120, marker="X",
-               edgecolor="k", linewidths=0.8)
-    ax.set_title(f"c-means (c=3) — threshold={thr:.2f}", fontsize=12)
-    ax.set_xticks([]); ax.set_yticks([])
-    ax.legend(loc="best", fontsize=9, frameon=False)
-    st.pyplot(fig, clear_figure=True)
+    st.divider()
 
-with col5:
-    if keep.sum() >= 3 and len(np.unique(labels_thr)) >= 2:
+    # Linha 2 — FCM: scatter filtrado + silhouette com sombra
+    st.subheader("Fuzzy C-means (c=3) com filtro de threshold")
+    keep = (u.max(axis=0) >= thr)
+    labels_thr = labels_fcm_argmax[keep] if keep.sum() > 0 else labels_fcm_argmax
+    Xn_thr = Xn[keep] if keep.sum() > 0 else Xn
+
+    c4, c5 = st.columns([1,1], vertical_alignment="top")
+    with c4:
+        fig = plt.figure(figsize=(5.2, 4.6))
+        ax = plt.gca()
+        colors = _palette(3)
+        # cinza para os ignorados
+        ax.scatter(X2[~keep,0], X2[~keep,1], s=12, alpha=0.25, c=[cm.Greys(0.6)])
+        # mantidos por cluster
+        for c in np.unique(labels_fcm_argmax):
+            m = keep & (labels_fcm_argmax == c)
+            ax.scatter(X2[m,0], X2[m,1], s=18, alpha=0.95, c=[colors[int(c)]], label=f"c={int(c)}")
+        ax.scatter(centers2_fcm[:,0], centers2_fcm[:,1], s=120, marker="X",
+                   edgecolor="k", linewidths=0.8)
+        ax.set_title(f"c-means (c=3) — threshold={thr:.2f}", fontsize=12)
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.legend(loc="best", fontsize=9, frameon=False)
+        st.pyplot(fig, clear_figure=True)
+
+    with c5:
+        if keep.sum() >= 3 and len(np.unique(labels_thr)) >= 2:
+            st.pyplot(
+                plot_silhouette(Xn_thr, labels_thr, "Silhouette (c-means)",
+                                bg=(bg_ref[0][keep], bg_ref[1][keep])),
+                clear_figure=True
+            )
+        else:
+            st.info("Threshold alto: pontos/clusters insuficientes para calcular silhueta.")
+
+    st.divider()
+
+    # Linha 3 — Violin plots 2×2 (K-means e FCM filtrado)
+    st.subheader("Distribuições por variável (violin plots)")
+    c6, c7 = st.columns([1,1], vertical_alignment="top")
+    with c6:
+        st.markdown("**K-means (k=3)**")
         st.pyplot(
-            plot_silhouette(Xn_thr, labels_thr, "Silhouette (c-means)",
-                            bg=(bg_ref[0][keep], bg_ref[1][keep])),
+            violin_grid(df_all, "km_cluster", feat_names,
+                        "Variáveis do Iris por cluster (K-means)"),
             clear_figure=True
         )
-    else:
-        st.info("Threshold alto: pontos/clusters insuficientes para calcular silhueta.")
+    with c7:
+        st.markdown(f"**Fuzzy C-means (c=3)** — filtrado por threshold = `{thr:.2f}`")
+        df_plot = df_all[df_all["fcm_max_u"] >= thr].copy()
+        if df_plot["fcm_cluster"].nunique() >= 2 and len(df_plot) >= 10:
+            st.pyplot(
+                violin_grid(df_plot, "fcm_cluster", feat_names,
+                            "Variáveis do Iris por cluster (FCM filtrado)"),
+                clear_figure=True
+            )
+        else:
+            st.info("Threshold alto: pontos/clusters insuficientes para exibir os violinos.")
 
-# =========================
-# Linha 3 — Violin plots 2×2 (K-means e FCM filtrado)
-# =========================
-st.subheader("Distribuições por variável (violin plots)")
+# -------------------------
+# TAB 2 — TABELAS
+# -------------------------
+with tab_tabelas:
+    st.subheader("Análise descritiva por cluster")
+    colA, colB = st.columns([1,1], vertical_alignment="top")
+    numeric_cols = list(feat_names)
 
-col6, col7 = st.columns(2, vertical_alignment="top")
-
-with col6:
-    st.markdown("**K-means (k=3)**")
-    st.pyplot(
-        violin_grid(df_all, "km_cluster", feat_names,
-                    "Variáveis do Iris por cluster (K-means)"),
-        clear_figure=True
-    )
-
-with col7:
-    st.markdown(f"**Fuzzy C-means (c=3)** — filtrado por threshold = `{thr:.2f}`")
-    df_plot = df_all[df_all["fcm_max_u"] >= thr].copy()
-    if df_plot["fcm_cluster"].nunique() >= 2 and len(df_plot) >= 10:
-        st.pyplot(
-            violin_grid(df_plot, "fcm_cluster", feat_names,
-                        "Variáveis do Iris por cluster (FCM filtrado)"),
-            clear_figure=True
+    # K-means
+    with colA:
+        st.markdown("**K-means (k=3)**")
+        desc_km = (
+            df_all
+            .groupby("km_cluster")[numeric_cols]
+            .agg(['count','mean','std','min','median','max'])
+            .sort_index()
         )
-    else:
-        st.info("Threshold alto: pontos/clusters insuficientes para exibir os violinos.")
+        desc_km.columns = ['_'.join(col).strip() for col in desc_km.columns.values]
+        st.dataframe(desc_km, use_container_width=True)
 
-st.caption("Silhueta: média geral e média por cluster exibidas no título. "
-           "No gráfico do FCM, o fundo cinza representa a silhueta 'dura' (threshold=0).")
+    # FCM (filtrado)
+    with colB:
+        st.markdown(f"**Fuzzy C-means (c=3)** — threshold atual: `{thr:.2f}`")
+        df_fcm = df_all[df_all["fcm_max_u"] >= thr].copy()
+        if df_fcm["fcm_cluster"].nunique() >= 1 and len(df_fcm) >= 3:
+            agg_dict = {col: ['count','mean','std','min','median','max'] for col in numeric_cols}
+            agg_dict["fcm_max_u"] = ['mean','std','min','median','max']
+
+            desc_fcm = df_fcm.groupby("fcm_cluster").agg(agg_dict).sort_index()
+            desc_fcm.columns = [
+                (f"{c}" if m == '' else f"{c}_{m}") for c, m in desc_fcm.columns.to_flat_index()
+            ]
+            st.dataframe(desc_fcm, use_container_width=True)
+            st.caption("Inclui estatísticas da pertinência dominante (`fcm_max_u_*`).")
+        else:
+            st.info("Threshold alto: pontos/clusters insuficientes para a análise descritiva.")
